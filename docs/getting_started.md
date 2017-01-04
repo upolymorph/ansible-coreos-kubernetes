@@ -1,4 +1,4 @@
-# Get, run and contibute #
+# Get, run and contribute #
 ## Get the code ##
 
 Requirement: This code is using ansible to bootstrap and update kerbernetes environment. Please ensure that ansible is installed on the machine you will run the code.
@@ -25,7 +25,7 @@ ansible-galaxy install sigma.coreos-bootstrap
 > be aware that this command should be run with root privileges to update /etc/ansible/roles
 
 
-You are now ready to use the application to bootstrap a new cluster and later to update it. 
+You are now ready to use the application to bootstrap a new cluster and later to update it.
 
 ## Bootstrap a cluster ##
 
@@ -34,10 +34,10 @@ Bootstrap is performed using the ansible playbook bootstrap_coreos.yml.
 
 ### Preparation ###
 
-Before bootstraping you need to get at least three dedicated servers. 
+Before bootstraping you need to get at least three dedicated servers.
 Curently hetzner, ovh and kimsufi should be supported. Deployment on lacal servers should be also supported. Please refer to Supported providers for detailed informations.
 
-Get the IP adresses of all your node and start to create a new inventory.ini file. 
+Get the IP adresses of all your node and start to create a new inventory.ini file.
 A sample ini file is provided on the root folder.
 
 #### Create a new ini file ####
@@ -54,17 +54,21 @@ A sample ini file is provided on the root folder.
 	d. change baremetal_provider and set webservice username and password if needed.
 	e. change python_interpreter if needed
     > REMARK: why ansible_python_interpreter is also defined in some playbook
+
 	f. set the ceph_fsid with a new UUID. UUID can be generated with the uuidgen shell command.
 	g. set the ceph_key with key generated usinf the ceph-key.py script provided
 	h. set ceph osd type and parameters. Currently there is no ceph_osd_type supported:
-		* type is directory which mean that osd will use a directory for its partition. You must ensure that the following parameters are set in the ini file:  
-			ceph_osd_type=os_directory
-			ceph_osd_path=<path to a local dir>
-		* type is disk which means that a fill disk will be used for osd partition. You must ensure that the following parameters are set in the ini file:
-			ceph_osd_type=os_disk
-			ceph osd drive=<path to a device (e.g. /dev/sdb) >
-	Finally set the parameters specific to your provider (Please refer to the provider section for detailed informations)		
-	i. copy the fingerprint public ssh key to be used in rescue mode.
+	- type is directory which mean that osd will use a directory for its partition. You must ensure that the following parameters are set in the ini file:
+    ceph_osd_type=os_directory
+	ceph_osd_path= ** path to a local dir **
+	* type is disk which means that a fill disk will be used for osd partition. You must ensure that the following parameters are set in the ini file:
+        ceph_osd_type=os_disk
+		ceph osd drive= **path to a device (e.g. /dev/sdb)**
+        
+	i. Finally set the parameters specific to your provider (Please refer to the provider section for detailed informations on how to get username, password and fingerprint)
+    - set the webservice username
+    - set the webservice password
+    - set the fingerprint public ssh key to be used in rescue mode.
 
 #### etcd-ca #####
 

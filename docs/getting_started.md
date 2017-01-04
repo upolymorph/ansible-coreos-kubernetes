@@ -53,7 +53,7 @@ A sample ini file is provided on the root folder.
 	c. the kube_cluster_name if needed
 	d. change baremetal_provider and set webservice username and password if needed.
 	e. change python_interpreter if needed
-> REMARK: why ansible_python_interpreter is also defined in some playbook ---
+> REMARK: why ansible_python_interpreter is also defined in some playbook
 	f. set the ceph_fsid with a new UUID. UUID can be generated with the uuidgen shell command.
 	g. set the ceph_key with key generated usinf the ceph-key.py script provided
 	h. set ceph osd type and parameters. Currently there is no ceph_osd_type supported:

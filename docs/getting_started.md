@@ -53,14 +53,14 @@ A sample ini file is provided on the root folder.
 	c. the kube_cluster_name if needed
 	d. change baremetal_provider and set webservice username and password if needed.
 	e. change python_interpreter if needed
---- REMARK: why ansible_python_interpreter is also defined in some playbook ---
+> REMARK: why ansible_python_interpreter is also defined in some playbook ---
 	f. set the ceph_fsid with a new UUID. UUID can be generated with the uuidgen shell command.
 	g. set the ceph_key with key generated usinf the ceph-key.py script provided
 	h. set ceph osd type and parameters. Currently there is no ceph_osd_type supported:
-		i). type is directory which mean that osd will use a directory for its partition. You must ensure that the following parameters are set in the ini file:  
+		* type is directory which mean that osd will use a directory for its partition. You must ensure that the following parameters are set in the ini file:  
 			ceph_osd_type=os_directory
 			ceph_osd_path=<path to a local dir>
-		ii). type is disk which means that a fill disk will be used for osd partition. You must ensure that the following parameters are set in the ini file:
+		* type is disk which means that a fill disk will be used for osd partition. You must ensure that the following parameters are set in the ini file:
 			ceph_osd_type=os_disk
 			ceph osd drive=<path to a device (e.g. /dev/sdb) >
 	Finally set the parameters specific to your provider (Please refer to the provider section for detailed informations)		
@@ -118,7 +118,7 @@ Find below some spefic steps required to use this playbook with hetzner provider
 This webservice username, password and the fingerprint of the rescue key to be provided in the hetzner section of the inventory.ini
 
 #### OVH ####
---- TO BE DONE
+> TO BE DONE
 
 
 ### Launch bootstrap process ###

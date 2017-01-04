@@ -22,7 +22,7 @@ Finally the current code depends on ansible-coreos-bootstrap module which requir
 ansible-galaxy install sigma.coreos-bootstrap
 ```
 
---- be aware that this command should be run with root privileges to update /etc/ansible/roles ---
+> be aware that this command should be run with root privileges to update /etc/ansible/roles
 
 
 You are now ready to use the application to bootstrap a new cluster and later to update it. 

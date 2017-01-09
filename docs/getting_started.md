@@ -7,12 +7,12 @@ The code could be retrieved from github using the following command
 ```
 git clone https://github.com/cornelius-keller/ansible-coroeos-kubernetes
 ```
-You should now retrieve the submodules used by this code. 
+You should now retrieve the submodules used by this code.
 
 ```
 #go to the source repository
 cd ansible-coreos-kubernetes
-git submodule init 
+git submodule init
 git submodule update
 ```
 
@@ -64,7 +64,7 @@ A sample ini file is provided on the root folder.
 	* type is disk which means that a fill disk will be used for osd partition. You must ensure that the following parameters are set in the ini file:
         ceph_osd_type=os_disk
 		ceph osd drive= **path to a device (e.g. /dev/sdb)**
-        
+
 	i. Finally set the parameters specific to your provider (Please refer to the provider section for detailed informations on how to get username, password and fingerprint)
     - set the webservice username
     - set the webservice password
@@ -136,25 +136,156 @@ ansible --version
 Launch the bootstrap process using the following command:
 
 ```
-ansible-playbook -i /<path to your inventory file/> bootstrap_coreos.yml
+ansible-playbook -i **path to your inventory file** bootstrap_coreos.yml
 ```
 
 the playbook should finish without any errors.
 
 ### Check your new cluster ###
 
+if your installation went well you should be able to get status of your cluster form your machine doing:
+
+```
+
+```
+
 #### 1. Check ssh connection ####
 You should be able to connect to each node of your cluster using ssh without password (authentication is done using ssh key). Use the following command to check:
 
 ```
-	ssh core@<ip_address of your node>
+	ssh core@**ip_address of your node**
 ```
 
-Expected result: You should be able to connect to each of your node as core without password.
+**Expected result:** You should be able to connect to each of your node as core without password.
 
-#### 2. Check etcd cluster healthiness ####
+#### 2. Check status of essentials services
+Connect to your nodes and check the status of the following services:
+
+* etcd2
+```
+  systemctl status -l etcd2 --no-pager
+```
+**Expected result:** You should get the following output
+```
+etcd2.service - etcd2
+   Loaded: loaded (/usr/lib/systemd/system/etcd2.service; disabled; vendor preset: disabled)
+  Drop-In: /run/systemd/system/etcd2.service.d
+           └─20-cloudinit.conf
+        /etc/systemd/system/etcd2.service.d
+           └─30-certificates.conf, 50-network-wait.conf
+   Active: active (running) since Wed 2017-01-04 13:45:20 UTC; 1 day 3h ago
+ Main PID: 1317 (etcd2)
+    Tasks: 16
+   Memory: 43.8M
+      CPU: 10min 17.189s
+   CGroup: /system.slice/etcd2.service
+           └─1317 /usr/bin/etcd2
+```
+for this output you can validate that the service is up and running
+* fleet
+```
+  systemctl status -l fleet --no-pager
+```
+**Expected result:** You should get the following output
+```
+● fleet.service - fleet daemon
+   Loaded: loaded (/usr/lib/systemd/system/fleet.service; disabled; vendor preset: disabled)
+  Drop-In: /run/systemd/system/fleet.service.d
+           └─20-cloudinit.conf
+   Active: active (running) since Sun 2017-01-08 06:16:25 UTC; 22min ago
+ Main PID: 5974 (fleetd)
+    Tasks: 5
+   Memory: 9.3M
+      CPU: 94ms
+   CGroup: /system.slice/fleet.service
+           └─5974 /usr/bin/fleetd
+```
+
+* kube api server
+```
+  systemctl status -l kube-apiserver.service --no-pager
+```
+**Expected result:** You should get the following output
+```
+● kube-apiserver.service - Kubernetes API Server
+   Loaded: loaded (/etc/systemd/system/kube-apiserver.service; static; vendor preset: disabled)
+   Active: active (running) since Sun 2017-01-08 10:53:52 UTC; 1min 44s ago
+     Docs: https://github.com/GoogleCloudPlatform/kubernetes
+ Main PID: 28752 (apiserver)
+    Tasks: 13
+   Memory: 54.1M
+      CPU: 4.478s
+   CGroup: /system.slice/kube-apiserver.service
+           └─28752 /apiserver #--service-account-key-file=/opt/bin/kube-serviceaccount.key --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem --client-ca-file=/etc/kubernetes/ssl/ca.pem --service-account-key-file=/etc/kubernetes/ssl/apiserver-key.pem --service-account-lookup=false --admission-control=NamespaceLifecycle,NamespaceAutoProvision,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota --runtime-config=api/v1 --allow-privileged=true --insecure-bind-address=127.0.0.1 --bind-address=xx.xx.xx.xx --insecure-port=8080 #--etcd-config=/etc/etcd-client.config.json --etcd-cafile=/etc/ssl/etcd/ca.crt --etcd-certfile=/etc/ssl/etcd/key.crt --etcd-keyfile=/etc/ssl/etcd/key.key --etcd-servers=https://xx.xx.xx.xx:2379 --kubelet-https=true --secure-port=6443 --runtime-config=extensions/v1beta1/daemonsets=true --service-cluster-ip-range=10.100.0.0/16 --ssh-keyfile=/etc/kubernetes/ssh/id_rsa --ssh-user=kubernetes #--token-auth-file=/srv/kubernetes/known_tokens.csv #--basic-auth-file=/srv/kubernetes/basic_auth.csv #--etcd-servers=http://127.0.0.1:2379 --logtostderr=true
+
+
+```
+* kube control manager
+```
+systemctl status -l --no-pager kube-controller-manager.service
+```
+**Expected result:** You should get the following output
+```
+● kube-controller-manager.service - Kubernetes Controller Manager
+   Loaded: loaded (/etc/systemd/system/kube-controller-manager.service; static; vendor preset: disabled)
+   Active: active (running) since Sun 2017-01-08 11:15:52 UTC; 38min ago
+     Docs: https://github.com/GoogleCloudPlatform/kubernetes
+ Main PID: 4317 (controller-mana)
+    Tasks: 13
+   Memory: 685.7M
+      CPU: 34.222s
+   CGroup: /system.slice/kube-controller-manager.service
+           └─4317 /controller-manager --service-account-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem --root-ca-file=/etc/kubernetes/ssl/ca.pem --master=127.0.0.1:8080 --leader-elect=true --leader-elect-lease-duration=15s --leader-elect-renew-deadline=10s --leader-elect-retry-period=2s --logtostderr=true
+```
+* kube scheduler
+```
+systemctl status -l --no-pager kube-scheduler.service         
+```
+**Expected result:** You should get the following output
+```
+● kube-scheduler.service - Kubernetes Scheduler
+   Loaded: loaded (/etc/systemd/system/kube-scheduler.service; static; vendor preset: disabled)
+   Active: active (running) since Sun 2017-01-08 11:15:52 UTC; 42min ago
+     Docs: https://github.com/GoogleCloudPlatform/kubernetes
+ Main PID: 4335 (scheduler)
+    Tasks: 13
+   Memory: 24.5M
+      CPU: 15.495s
+   CGroup: /system.slice/kube-scheduler.service
+           └─4335 /scheduler --master=127.0.0.1:8080 --leader-elect=true --leader-elect-lease-duration=15s --leader-elect-renew-deadline=10s --leader-elect-retry-period=2s
+```
+#### 3. Check etcd service ####
 Connect to one of your node using ssh and run the following command
 
 ```
+  etcdctl cluster-health
+```
+**Expected result:** You should get a list of all the etcd cluster member
 
+```
+member 1bf9eb3de326f477 is healthy: got healthy result from https://xx.xx.xx.xx:2379
+member cd4c58ff55c64bf0 is healthy: got healthy result from https://xx.xx.xx.xx:2379
+member ea7f964fa5adb1f1 is healthy: got healthy result from https://xx.xx.xx.xx:2379
+cluster is healthy
+```
+
+#### 4. Check fleet service ####
+
+### Troubleshooting common issues
+#### Debugging cloud-config file
+During the bootstarp process of your cluster a cloud-config file is created by the cloud-config task and pushed on your nodes as /var/lib/coreos/user-data.
+This file is used by coreos to configure and setup your cluster.
+This file could be one of the main source of issues for your cluster.
+
+* Validate synthax of cloud-config file using teh command
+
+```
+  sudo coreos-cloudinit -validate --from-file /var/lib/coreos-install/user_data
+```
+
+**Expected result:** You should get the following output
+
+```
+2017/01/05 17:51:25 Checking availability of "local-file"
+2017/01/05 17:51:25 Fetching user-data from datasource of type "local-file"
 ```

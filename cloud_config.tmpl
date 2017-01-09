@@ -825,6 +825,7 @@ coreos:
         Documentation=https://github.com/kelseyhightower/setup-network-environment
         Requires=early-docker.service
         After=early-docker.service
+        Before=etcd2.service
         [Service]
         Environment="DOCKER_HOST=unix:///var/run/early-docker.sock"
         ExecStartPre=/usr/bin/docker pull quay.io/cornelius/hetner-netconf

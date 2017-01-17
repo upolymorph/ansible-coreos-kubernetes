@@ -1254,7 +1254,7 @@ coreos:
       content: |
          [Unit]
          Description=Ha Proxy for kubernetes api server
-         After=docker.service kubernetes-components.target
+         After=docker.service
          Before=kubernetes-networking.target
 
          [Service]

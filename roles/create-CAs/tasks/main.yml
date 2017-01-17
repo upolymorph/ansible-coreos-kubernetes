@@ -22,14 +22,14 @@
     args:
       creates: "{{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem"
 
-  - name: Copy CA crt to be trusted locally (!!! Only tested on Ubuntu local host !!!)
-    shell: "cp {{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem /etc/ssl/certs/{{ kube_cluster_name}}-ca.pem"
-    sudo: yes
-
-  - name: Update local trusted CA db (!!! Only tested on Ubuntu local host !!!)
-    shell: update-ca-certificates
-    sudo: yes
-
+  # - name: Copy CA crt to be trusted locally (!!! Only tested on Ubuntu local host !!!)
+  #   shell: "cp {{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem /etc/ssl/certs/{{ kube_cluster_name}}-ca.pem"
+  #   sudo: yes
+  #
+  # - name: Update local trusted CA db (!!! Only tested on Ubuntu local host !!!)
+  #   shell: update-ca-certificates
+  #   sudo: yes
+  #
   - name: get localhost current public IP
     shell: dig +short myip.opendns.com @resolver1.opendns.com
     register: myIP

@@ -1,4 +1,13 @@
 ---
+- name: wait for kubernetes master to come up
+  delegate_to: localhost
+  connection: local
+  when: inventory_hostname in groups['kubernetes-master']
+  wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 6443
+    timeout: 600
+
 - name: kubectl checksum
   local_action:
      module: shell
@@ -16,5 +25,3 @@
      mode: 0770
   run_once: yes
   when: kubectl_checksum != current_kubectl_checksum.stdout
-
-

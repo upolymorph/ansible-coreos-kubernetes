@@ -13,12 +13,12 @@ users:
 
 
 write_files:
-  - path: /etc/kubernetes/ssh/id_rsa
+  - path: /etc/kubernetes/ssh/id_kube_rsa
     permissions: '0600'
     encoding: base64
     content: |
       {{ kubernetes_ssh_private_key|b64encode|indent(width=6)  }}
-  - path: /etc/kubernetes/ssh/id_rsa.pub
+  - path: /etc/kubernetes/ssh/id_kube_rsa.pub
     permissions: '0600'
     encoding: base64
     content: |
@@ -55,7 +55,7 @@ write_files:
     content: |
       #!/bin/bash
       /opt/bin/wupiao localhost:8888
-      /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ quay.io/cornelius/hyperkube:v1.3.5_coreos.1 \
+      /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ {{ hyperkube_aci }}:{{ hyperkube_aci_tag }} \
       /hyperkube kubectl --client-key=/etc/kubernetes/ssl/worker-key.pem --client-certificate=/etc/kubernetes/ssl/worker.pem \
       --server=https://127.0.0.1:8888 --certificate-authority=/etc/kubernetes/ssl/ca.pem get nodes  | grep {{ inventory_hostname }} | grep  -q SchedulingDisabled
   - path: /opt/bin/uncordon-node
@@ -64,7 +64,7 @@ write_files:
       #!/bin/sh
       while /opt/bin/check-cordon
       do
-         /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ quay.io/cornelius/hyperkube:v1.3.5_coreos.1 \
+         /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ {{ hyperkube_aci }}:{{ hyperkube_aci_tag }} \
          /hyperkube kubectl --client-key=/etc/kubernetes/ssl/worker-key.pem --client-certificate=/etc/kubernetes/ssl/worker.pem \
          --server=https://127.0.0.1:8888 --certificate-authority=/etc/kubernetes/ssl/ca.pem uncordon {{ inventory_hostname }} || true
       done
@@ -78,7 +78,7 @@ write_files:
       MAX_TRIES=4
       COUNT=0
       while [  $COUNT -lt $MAX_TRIES ]; do
-         /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ quay.io/cornelius/hyperkube:v1.3.5_coreos.1 /hyperkube kubectl --client-key=/etc/kubernetes/ssl/worker-key.pem --client-certificate=/etc/kubernetes/ssl/worker.pem --server=https://127.0.0.1:8888 --certificate-authority=/etc/kubernetes/ssl/ca.pem drain {{ inventory_hostname }} --ignore-daemonsets=true --force --delete-local-data
+         /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ {{ hyperkube_aci }}:{{ hyperkube_aci_tag }} /hyperkube kubectl --client-key=/etc/kubernetes/ssl/worker-key.pem --client-certificate=/etc/kubernetes/ssl/worker.pem --server=https://127.0.0.1:8888 --certificate-authority=/etc/kubernetes/ssl/ca.pem drain {{ inventory_hostname }} --ignore-daemonsets=true --force --delete-local-data
          if [ $? -eq 0 ];then
             while  mount | grep -q foo; do
               echo "there are still rbds mountend. waiting another 10 seconds for them to disappear";
@@ -121,7 +121,7 @@ write_files:
       exec /usr/bin/rkt run \
         --volume etcd-certs,kind=host,source=/etc/ssl/etcd/ \
         --volume etc-kubernetes,kind=host,source=/etc/kubernetes \
-        --volume etc-ssl-certs,kind=host,source=/usr/share/ca-certificates \
+        --volume etc-ssl-certs,kind=host,source=/etc/ssl/certs \
         --volume var-lib-docker,kind=host,source=/var/lib/docker \
         --volume var-lib-kubelet,kind=host,source=/var/lib/kubelet \
         --volume os-release,kind=host,source=/usr/lib/os-release \
@@ -144,13 +144,13 @@ write_files:
     content: |
       {{ kube_ca|indent(width=6) }}
 
-  {% endif %}
-  {%if inventory_hostname in groups['kubernetes-master'] %}
-
-
-  - path: /etc/kubernetes/ssl/ca-key.pem
+  - path: /etc/ssl/certs/{{ kube_cluster_name }}-ca.pem
     content: |
-      {{ kube_ca_key|indent(width=6) }}
+      {{ kube_ca|indent(width=6) }}
+
+  {% endif %}
+
+  {%if inventory_hostname in groups['kubernetes-master'] %}
 
   - path: /etc/conf.d/nfs
     permissions: '0644'
@@ -181,7 +181,7 @@ write_files:
 #          - apiserver
 #          - --bind-address=0.0.0.0
 #          - --etcd-servers=https://{{ inventory_hostname }}:2379
-#          - --etcd-cafile=/etc/ssl/etcd/ca.crt
+#          - --cafile=/etc/ssl/etcd/ca.crt
 #          - --etcd-certfile=/etc/ssl/etcd/key.crt
 #          - --etcd-keyfile=/etc/ssl/etcd/key.key
 #          - --allow-privileged=true
@@ -305,10 +305,10 @@ write_files:
 
   {%if inventory_hostname in groups['kubernetes-node'] or inventory_hostname in groups['kubernetes-master'] %}
 
-#  - path: /etc/kubernetes/manifests/kube-proxy.yaml
+#  - path: /etc/kubernetes/kube-proxy.yaml
 #    content: |
-#      apiVersion: extensions/v1beta1
-#      kind: DaemonSet
+#      apiVersion: v1
+#      kind: Pod
 #      metadata:
 #        name: kube-proxy-{{ inventory_hostname }}
 #        namespace: kube-system
@@ -324,7 +324,7 @@ write_files:
 #            nodeName: "{{ inventory_hostname }}"
 #            containers:
 #            - name: kube-proxy
-#              image: quay.io/cornelius/hyperkube:v1.3.5_coreos.1
+#              image: {{ hyperkube_aci }}:{{ hyperkube_aci_tag }}
 #              command:
 #              - /hyperkube
 #              - proxy
@@ -461,6 +461,39 @@ write_files:
         fi
       done
       docker exec tinc /usr/sbin/tinc reload
+
+  - path: /srv/tinc_service.sh
+    permissions: 0774
+    owner: root
+    content: |
+      #! /bin/bash
+
+
+      /bin/bash -c "echo \"TINC_HOSTNAME=`hostname | sed -e 's/-/_/g'`\" > /etc/tinc-env"
+
+      #source tinc-env
+      . /etc/tinc-env
+
+      #source environment (as not sourced by systemd)
+      . /etc/environment
+
+      #source flannel env file
+      . /run/flannel/subnet.env
+
+      docker pull jenserat/tinc
+
+      rm -rf /srv/tinc
+      mkdir -p /srv/tinc
+      docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc init $TINC_HOSTNAME
+      docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Address = $COREOS_PUBLIC_IPV4
+      docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Subnet = `echo $FLANNEL_SUBNET | sed -e 's/1\\/24/0\\/24/'`
+      docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Mode = switch
+      docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add DeviceType = tap
+      docker rm -f tinc
+      docker run --name tinc  -d --volume /srv/tinc:/etc/tinc --net=host --device=/dev/net/tun --cap-add NET_ADMIN jenserat/tinc start  -D
+
+      while true; do etcdctl set /services/tinc/$TINC_HOSTNAME  " $(cat /srv/tinc/hosts/$TINC_HOSTNAME) " --ttl "60";sleep 45;done
+
   - path: /etc/environment
     permissions: 0774
     owner: root
@@ -471,6 +504,10 @@ write_files:
       ETCDCTL_CA_FILE=/etc/ssl/etcd/ca.crt
       ETCDCTL_PEERS=https://{{ inventory_hostname }}:4001
       ETCDCTL_KEY_FILE=/etc/ssl/etcd/key.key
+      FLEETCTL_CERT_FILE=/etc/ssl/etcd/key.crt
+      FLEETCTL_CA_FILE=/etc/ssl/etcd/ca.crt
+      FLEETCTL_ENDPOINT=https://{{ inventory_hostname }}:4001
+      FLEETCTL_KEY_FILE=/etc/ssl/etcd/key.key
       LOCKSMITHCTL_ETCD_CERTFILE=/etc/ssl/etcd/key.crt
       LOCKSMITHCTL_ETCD_CAFILE=/etc/ssl/etcd/ca.crt
       LOCKSMITHCTL_ENDPOINT=https://{{ inventory_hostname }}:4001
@@ -558,15 +595,17 @@ write_files:
               rm /var/run/blackhole.pid
             fi
           fi
+          if [ $(etcdctl ls | grep blackhole | wc -l) -eq 0 ] ; then etcdctl mkdir /blackhole/whitelist; fi
+          if [ $(etcdctl ls blackhole | grep whitelist | wc -l) -eq 0 ] ; then etcdctl mkdir /blackhole/whitelist; fi
           echo $BASHPID > /var/run/blackhole.pid
           # Requires fleetctl
           #          (
           #            last --time-format notime -awi | grep pts | cut -c38-
           #            fleetctl list-machines --fields=ip -no-legend
-          #          ) | sort | uniq | while read ip ; do if ! etcdctl get /blackhole/whitelist/$ip > /dev/null 2>&1 ; then date | etcdctl set /blackhole/whitelist/$ip; fi; done
+          #          ) | sort | uniq | while read ip ; do if ! $(etcdctl ls /blackhole/whitelist | grep {{ inventory_hostname }}) ; then date | etcdctl set /blackhole/whitelist/$ip; fi; done
           # if no fleetctl we simply add each node ip as whitelist
           echo "whitelisting ip {{ inventory_hostname }} "
-          if [ ! etcdctl get /blackhole/whitelist/{{ inventory_hostname }} > /dev/null 2>&1 ] ; then date | etcdctl set /blackhole/whitelist/{{ inventory_hostname }} ; fi;
+          if [ ! $(etcdctl ls /blackhole/whitelist | grep {{ inventory_hostname }})  ] ; then etcdctl set /blackhole/whitelist/{{ inventory_hostname }} $(date); fi;
           echo "done ...."
           (
             /usr/bin/journalctl -f -o json | \
@@ -574,8 +613,10 @@ write_files:
                grep --line-buffered -e 'Disconnecting: Too many authentication failures\|Failed password for' | \
                sed -u -e 's/^.*sshd@.*:22-//' -e 's/:.*$//' | \
                while read ip; do \
-                 if ! etcdctl get /blackhole/whitelist/$ip > /dev/null 2>&1; then \
-                   date | etcdctl set --ttl 3600 /blackhole/blacklist/$ip ; \
+                 echo "Checking whitelisting of $ip"
+                 if [ $(etcdctl ls /blackhole/whitelist | grep $ip | wc -l) -eq 0 ] ; then \
+                   echo "Blacklisting ip: $ip"
+                   etcdctl set --ttl 3600 /blackhole/blacklist/$ip $(date); \
                    ip route add blackhole $ip 2>/dev/null | true ; \
                  fi ; \
                done &
@@ -681,7 +722,7 @@ coreos:
     #addr: {{ inventory_hostname }}:4001
     #peer-addr: {{ inventory_hostname }}:7001
   update:
-    reboot-strategy: off
+    reboot-strategy: etcd-lock
   etcd2:
     # generate a new token for each unique cluster from https://discovery.etcd.io/new?size=3
     #discovery: "{# etcd_discovery_url #}"
@@ -706,21 +747,24 @@ coreos:
 
   fleet:
     public-ip: {{ inventory_hostname }}
-    #  metadata: role={# coreos_role #}
+    metadata: context="kubernetes cluster" scope={{ kube_cluster_name }} region=europe
     etcd_cafile: /etc/ssl/etcd/ca.crt
     etcd_certfile: /etc/ssl/etcd/key.crt
     etcd_keyfile: /etc/ssl/etcd/key.key
     etcd_servers: https://{{ inventory_hostname }}:2379
+
   locksmith:
     endpoint: https://{{ inventory_hostname }}:2379
     etcd_cafile: /etc/ssl/etcd/ca.crt
     etcd_certfile: /etc/ssl/etcd/key.crt
     etcd_keyfile: /etc/ssl/etcd/key.key
+
   flannel:
     interface: {{ inventory_hostname }}
+
   units:
     - name: locksmithd.service
-      command: stop
+      command: start
     - name: update-window.service
       runtime: true
       content: |
@@ -739,6 +783,60 @@ coreos:
 
         [Timer]
         OnCalendar=*:0/5
+    - name: update_ca_certificates.service
+      command: start
+      content: |
+        [Unit]
+        Before=early-docker.service
+        [Service]
+        ExecStart=/usr/sbin/update-ca-certificates
+        RemainAfterExit=yes
+        Type=oneshot
+    - name: 00-wired.network
+      runtime: true
+      content: |
+        [Match]
+        Name=en*
+        [Network]
+        DHCP=ipv4
+        DNS=127.0.0.1
+        Domains=
+    {% if hetzner_failover_ips is defined %}
+    {% for ip in hetzner_failover_ips %}
+        Address={{ ip }}
+    {% endfor %}
+    {% endif  %}
+
+    - name: setup-network-environment.service
+      command: start
+      content: |
+        [Unit]
+        Description=Setup Network Environment
+        Documentation=https://github.com/kelseyhightower/setup-network-environment
+        Requires=network-online.target
+        After=network-online.target
+        [Service]
+        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
+        ExecStartPre=/usr/bin/curl -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
+        ExecStart=/opt/bin/setup-network-environment
+        RemainAfterExit=yes
+        Type=oneshot
+
+    - name: setup-subnet-routes.service
+      command: start
+      content: |
+        [Unit]
+        Description=Setup Hetzner Subnet Routes (requires early-docker because it uses docker)
+        Documentation=https://github.com/kelseyhightower/setup-network-environment
+        Requires=early-docker.service
+        After=early-docker.service
+        [Service]
+        Environment="DOCKER_HOST=unix:///var/run/early-docker.sock"
+        ExecStartPre=/usr/bin/docker pull quay.io/cornelius/hetner-netconf
+        ExecStart=/usr/bin/docker run --cap-add NET_ADMIN --net=host quay.io/cornelius/hetner-netconf
+        RemainAfterExit=yes
+        Type=oneshot
 
     - name: etcd2.service
       command: start
@@ -760,17 +858,90 @@ coreos:
             Environment=ETCD_PEER_CA_FILE=/etc/ssl/etcd/ca.crt
             Environment=ETCD_PEER_CERT_FILE=/etc/ssl/etcd/key.crt
             Environment=ETCD_PEER_KEY_FILE=/etc/ssl/etcd/key.key
-
-    - name: update_ca_certificates.service
+    - name: etcd-waiter.service
       command: start
       content: |
         [Unit]
-        Before=early-docker.service
+        Description=etcd waiter
+        Wants=network-online.target
+        Wants=etcd2.service
+        After=etcd2.service
+        After=network-online.target
+        Before=flanneld.service
+        Before=setup-network-environment.service
+
         [Service]
-        ExecStart=/usr/sbin/update-ca-certificates
-        RemainAfterExit=yes
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/waiter.sh
+        ExecStart=/usr/bin/bash /opt/bin/waiter.sh
+        RemainAfterExit=true
         Type=oneshot
 
+    - name: blackhole-systemd.service
+      command: start
+      content: |
+          [Unit]
+          Description=Turn on automated addition of blackhole routes for sshd attackers
+          After=etcd2.service
+          Requires=etcd2.service
+
+          [Service]
+          EnvironmentFile=/etc/environment
+          ExecStart=/srv/blackhole.sh start
+          ExecStop=/srv/blackhole.sh stop
+          Restart=always
+    # Blackhole service definition for fleet. Uncomment when fleet will be working
+    #    - name: blackhole-create-fleet-units.service
+    #      command: start
+    #      content: |
+    #        [Unit]
+    #        After=docker.service
+    #        ConditionFileIsExecutable=/srv/blackhole-create-fleet-units.sh
+    #        ConditionFileNotEmpty=/srv/blackhole@.service
+    #
+    #        [Service]
+    #        ExecStart=/srv/blackhole-create-fleet-units.sh
+    #        RemainAfterExit=no
+    #        Type=oneshot
+
+    - name: flanneld.service
+      command: start
+      enable: true
+      drop-ins:
+        - name: 50-network-config.conf
+          content: |
+            [Unit]
+            Requires=etcd2.service
+            After=etcd2.service etcd-waiter.service
+            Before=docker.service
+            [Service]
+            EnvironmentFile=/etc/environment
+            ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16", "Backend": { "Type": "alloc"} }'
+        - name: 40-symlink.conf
+          content: |
+            [Service]
+            ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
+    - name: flannel-wait.service
+      command: start
+      enable: true
+      content: |
+
+        [Unit]
+        Description=Wait For Flannel
+        Requires=flanneld.service
+        After=etcd2.service flanneld.service
+        Before=early-docker.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/sh -c "while [ ! -f /run/flannel/subnet.env ] ; do sleep 1; done"
+
+    - name: early-docker.target
+      content: |
+
+        [Unit]
+        Description=Ensure all services requires by docker are running
+        Requires=flanneld.service
+        After= setup-network-environment.service setup-subnet-routes.service flannel-wait.service
     - name: docker.service
       command: start
       drop-ins:
@@ -780,71 +951,128 @@ coreos:
             Requires=flanneld.service
             Wants=flanneld.service
             After=flanneld.service
-
-    - name: 00-wired.network
-      runtime: true
+    - name: dnsmask.service
+      command: start
+      enable: true
       content: |
-        [Match]
-        Name=en*
-        [Network]
-        DHCP=ipv4
-        DNS=127.0.0.1
-        Domains=
-{% if hetzner_failover_ips is defined %}
-{% for ip in hetzner_failover_ips %}
-        Address={{ ip }}
-{% endfor %}
-{% endif  %}
+        [Unit]
+        Description=dnsmask service
+        Requires=docker.service
+        Before=kubernetes-networking.target
+
+        [Install]
+        WantedBy=kubernetes-networking.target
 
 
-    #To use etcd2, comment out the above service and uncomment these
-    # Note: this requires a release that contains etcd2
-    #- name: etcd2.service
-    #  command: start
+        [Service]
+        ExecStartPre=/usr/bin/docker pull quay.io/coreos/dnsmasq
+        ExecStartPre=-/usr/bin/docker rm -f dnsmask
+        ExecStart=/usr/bin/docker run  --name dnsmask --net=host --cap-add=NET_ADMIN quay.io/coreos/dnsmasq -d -q  \
+          --listen-address=127.0.0.1 \
+          --server=/cluster.local/{{ k8s_dns_service_ip }} \
+          --rev-server={{ k8s_service_ip_range }},{{ k8s_dns_service_ip }} \
+          --rev-server=10.1.0.0/16,{{ k8s_dns_service_ip }}
 
-    - name: blackhole-systemd.service
+        #ExecStop=/usr/bin/sleep 50
+        ExecStopPost=/usr/bin/docker rm -f dnsmask
+        Restart=always
+        RestartSec=10
+        TimeoutStartSec=5m
+
+    - name: tinc.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Tinc VPN Service
+        Requires=flannel-wait.service
+        After=flanneld.service flannel-wait.service
+        Before=kubernetes-networking.target tinc-config-updater.service
+
+        [Install]
+        WantedBy=kubernetes-networking.target
+
+        [Service]
+        EnvironmentFile=/etc/environment
+        Environment="DOCKER_HOST=unix:///var/run/early-docker.sock"
+        TimeoutStartSec=2m
+
+        ExecStart=/srv/tinc_service.sh
+
+        ExecStop=/usr/bin/docker rm -f tinc
+        ExecStopPost=/bin/sh -c  "etcdctl rm /services/tinc/$TINC_HOSTNAME"
+    - name: tinc-config-updater.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Countinously update tinc configuration after ectd changes
+        After=tinc.service
+        Before=kubernetes-networking.target
+        Restart=always
+
+        [Install]
+        WantedBy=kubernetes-networking.target
+
+        [Service]
+        Restart=always
+        RestartSec=10
+        EnvironmentFile=/etc/environment
+        ExecStartPre=/srv/tinc_initial_config.sh
+        ExecStart=/usr/bin/etcdctl exec-watch --recursive /services/tinc -- /srv/tinc_conf_updater.sh
+
+    - name: docker-bridge.service
       command: start
       content: |
-          [Unit]
-          Description=Turn on automated addition of blackhole routes for sshd attackers
+        [Unit]
+        Description=Configure Docker Bridge
+        Requires=docker.service
+        #After=docker.socket
+        [Service]
+        Type=oneshot
+        #ExecStartPre=-/bin/sh -c "route del -net 10.1.0.0 netmask 255.255.0.0 dev tap0"
+        ExecStartPre=/bin/sh -c "while ! ifconfig -s | grep -q tap0 ; do  sleep 1; done"
+        ExecStartPre=/bin/sh -c "while ! ifconfig -s | grep -q docker0 ; do  sleep 1; done"
+        ExecStartPre=/bin/sh -c "route add -net 10.1.0.0 netmask 255.255.0.0 dev docker0"
+        #ExecStartPre=-/bin/sh -c "brctl delif docker0 tap0"
+        ExecStart=/bin/sh -c "brctl addif docker0 tap0"
 
-          [Service]
-          ExecStart=/srv/blackhole.sh start
-          ExecStop=/srv/blackhole.sh stop
-          Restart=always
+    - name: cleanup-at-shutdown.service
+      enable: true
+      command: start
+      content: |
+        [Unit]
+        Description=Cleanup directories populated by cloudconfig to avoid configuration drift
+        RequiredBy=kube-kubelet.service
+
+        [Install]
+        WantedBy=kubernetes-networking.target
 
 
-# Blackhole service definition for fleet. Uncomment when fleet will be working
-#    - name: blackhole-create-fleet-units.service
-#      command: start
-#      content: |
-#        [Unit]
-#        After=docker.service
-#        ConditionFileIsExecutable=/srv/blackhole-create-fleet-units.sh
-#        ConditionFileNotEmpty=/srv/blackhole@.service
-#
-#        [Service]
-#        ExecStart=/srv/blackhole-create-fleet-units.sh
-#        RemainAfterExit=no
-#        Type=oneshot
+        [Service]
+        RemainAfterExit=yes
+        ExecStart=/bin/true
+        ExecStopPost=/opt/bin/cleanup
+        Type=oneshot
+
 
 {% if inventory_hostname in groups['kubernetes-master'] %}
-    # systemd services master only
+    # systemd services only for kubernetes master nodes
     - name: kube-apiserver.service
       command: start
+      enable: true
       content: |
         [Unit]
         Description=Kubernetes API Server
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
         Requires=setup-network-environment.service etcd2.service
         After=setup-network-environment.service etcd2.service kubernetes-networking.target
-        Before=kube-kubelet.service
+        Before=kubernetes-components.target
         [Service]
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
         Environment=EXEC=apiserver
         ExecStart=/opt/bin/hyperkube-wrapper \
-        #--service-account-key-file=/opt/bin/kube-serviceaccount.key \
         --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem \
         --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem \
         --client-ca-file=/etc/kubernetes/ssl/ca.pem \
@@ -856,8 +1084,6 @@ coreos:
         --insecure-bind-address=127.0.0.1 \
         --bind-address={{ inventory_hostname }} \
         --insecure-port=8080 \
-        #--etcd-config=/etc/etcd-client.config.json \
-        --etcd-cafile=/etc/ssl/etcd/ca.crt \
         --etcd-certfile=/etc/ssl/etcd/key.crt \
         --etcd-keyfile=/etc/ssl/etcd/key.key \
         --etcd-servers=https://{{ inventory_hostname }}:2379 \
@@ -865,15 +1091,11 @@ coreos:
         --secure-port=6443 \
         --runtime-config=extensions/v1beta1/daemonsets=true \
         --service-cluster-ip-range={{ k8s_service_ip_range }} \
-        --ssh-keyfile=/etc/kubernetes/ssh/id_rsa \
+        --ssh-keyfile=/etc/kubernetes/ssh/id_kube_rsa \
         --ssh-user=kubernetes \
-        #--token-auth-file=/srv/kubernetes/known_tokens.csv \
-        #--basic-auth-file=/srv/kubernetes/basic_auth.csv \
-        #--etcd-servers=http://127.0.0.1:2379 \
         --logtostderr=true
         Restart=always
         RestartSec=10
-
     - name: kube-controller-manager.service
       command: start
       content: |
@@ -882,7 +1104,8 @@ coreos:
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
         Requires=kube-apiserver.service
         After=kube-apiserver.service
-        Before=kube-kubelet.service
+        Wants=kube-apiserver.service
+        Before=kubernetes-components.target
         [Service]
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
@@ -906,7 +1129,8 @@ coreos:
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
         Requires=kube-apiserver.service
         After=kube-apiserver.service
-        Before=kube-kubelet.service
+        Wants=kube-apiserver.service
+        Before=kubernetes-components.target
         [Service]
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
@@ -920,7 +1144,26 @@ coreos:
         Restart=always
         RestartSec=10
 
+    # kubernetes main component
+    - name: kubernetes-components.target
+      command: start
+      content: |
+        [Unit]
+        Description=component required for kubernetes start
+        After=kube-apiserver.service kube-controller-manager.service kube-scheduler.service
 {% endif %}
+
+{% if inventory_hostname in groups['kubernetes-node'] %}
+
+    # kubernetes main component (none on a node)
+    - name: kubernetes-components.target
+      command: start
+      content: |
+        [Unit]
+        Description=component required for kubernetes start
+        Requires=tinc.service dnsmask.service cleanup-at-shutdown.service
+{% endif %}
+
 {% if inventory_hostname in groups['kubernetes-master'] or inventory_hostname in groups['kubernetes-node'] %}
     # kubernetes network service
     - name: kubernetes-networking.target
@@ -928,44 +1171,15 @@ coreos:
       content: |
         [Unit]
         Description=services required for proper container networking
-    - name: setup-network-environment.service
-      command: start
-      content: |
-        [Unit]
-        Description=Setup Network Environment
-        Documentation=https://github.com/kelseyhightower/setup-network-environment
-        Requires=network-online.target
-        After=network-online.target
-        [Service]
-        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStartPre=/usr/bin/curl -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
-        ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
-        ExecStart=/opt/bin/setup-network-environment
-        RemainAfterExit=yes
-        Type=oneshot
-    - name: setup-subnet-routes.service
-      command: start
-      content: |
-        [Unit]
-        Description=Setup Hetzner Subnet Routes
-        Documentation=https://github.com/kelseyhightower/setup-network-environment
-        Requires=early-docker.service
-        After=early-docker.service
-        [Service]
-        Environment="DOCKER_HOST=unix:///var/run/early-docker.sock"
-        ExecStartPre=/usr/bin/docker pull quay.io/cornelius/hetner-netconf
-        ExecStart=/usr/bin/docker run --cap-add NET_ADMIN --net=host quay.io/cornelius/hetner-netconf
-        RemainAfterExit=yes
-        Type=oneshot
+
     - name: kube-proxy.service
-      enable: true
       command: start
       content: |
         [Unit]
-        Description=Kubernetes Proxy
+        Description=Kubernetes Proxy (start between kubernetes components and kubernetes networking targets)
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=docker.service
-        After=docker.service
+        Requires=docker.service kubernetes-components.target
+        After=docker.service kubernetes-components.target
         Before=kubernetes-networking.target
 
         [Install]
@@ -983,14 +1197,13 @@ coreos:
                    --net=host --privileged=true \
                    {{ hyperkube_aci }}:{{ hyperkube_aci_tag }} \
                    /hyperkube proxy \
-                   --master=https://localhost:8888 \
+                   --master=https://127.0.0.1:8888 \
                    --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
                    --logtostderr=true \
                    --proxy-mode=iptables
         ExecStop=/usr/bin/docker rm -f kube-proxy
         Restart=always
         RestartSec=10
-
     - name: kube-kubelet.service
       command: start
       content: |
@@ -1004,8 +1217,8 @@ coreos:
         ExecStartPre=/usr/bin/docker pull ceph/base
         TimeoutStopSec=180s
 
-        Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
-        Environment=KUBELET_ACI={{ hyperkube_aci }}
+        Environment=KUBELET_IMAGE_TAG={{ hyperkube_aci_tag }}
+        Environment=KUBELET_IMAGE_URL={{ hyperkube_aci }}
         Environment="RKT_OPTS=--volume=ceph,kind=host,source=/etc/ceph/ --mount volume=ceph,target=/etc/ceph/ --volume=modules,kind=host,source=/lib/modules/ --mount volume=modules,target=/lib/modules/ --volume resolv-conf,kind=host,source=/etc/resolv.conf --mount volume=resolv-conf,target=/etc/resolv.conf --volume var-log-containers,kind=host,source=/var/log/containers/ --mount volume=var-log-containers,target=/var/log/containers/"
         #--volume sys,kind=host,source=/sys --mount volume=sys,target=/sys --volume dev,kind=host,source=/dev --mount volume=dev,target=/dev"
         ExecStart=/usr/lib/coreos/kubelet-wrapper \
@@ -1037,12 +1250,11 @@ coreos:
         [Install]
         WantedBy=multi-user.target
     - name: kube-apiserver-haproxy.service
-      enable: true
       command: start
       content: |
          [Unit]
          Description=Ha Proxy for kubernetes api server
-         After=docker.service
+         After=docker.service kubernetes-components.target
          Before=kubernetes-networking.target
 
          [Service]
@@ -1062,211 +1274,4 @@ coreos:
 
          [Install]
          WantedBy=kubernetes-networking.target
-
 {% endif %}
-
-    - name: early-docker.service
-      command: start
-      enable: true
-    - name: tinc-env.service
-      enable: true
-      command: start
-      content: |
-        [Unit]
-        Description=Tinc Service
-        After=etcd.service etcd2.service early-docker.service flanneld.service
-        Before=early-docker.target fleet.service
-
-        [Service]
-        Type=oneshot
-        ExecStart=/bin/sh -c "echo \"TINC_HOSTNAME=`hostname | sed -e 's/-/_/g'`\" > /etc/tinc-env"
-    - name: flannel-wait.service
-      command: start
-      enable: true
-      content: |
-
-        [Unit]
-        Description=Wait For Flannel
-        Requires=flanneld.service
-        After=etcd.service etcd2.service early-docker.service flanneld.service
-        Before=early-docker.target
-
-        [Service]
-        Type=oneshot
-        ExecStart=/bin/sh -c "echo \"TINC_HOSTNAME=`hostname | sed -e 's/-/_/g'`\" > /etc/tinc-env"
-        ExecStartPre=/bin/sh -c "while [ ! -f /run/flannel/subnet.env ] ; do sleep 1; done"
-
-    - name: etcd-waiter.service
-      command: start
-      content: |
-        [Unit]
-        Description=etcd waiter
-        Wants=network-online.target
-        Wants=etcd2.service
-        After=etcd2.service
-        After=network-online.target
-        Before=flanneld.service
-        Before=setup-network-environment.service
-
-        [Service]
-        ExecStartPre=/usr/bin/chmod +x /opt/bin/waiter.sh
-        ExecStart=/usr/bin/bash /opt/bin/waiter.sh
-        RemainAfterExit=true
-        Type=oneshot
-
-    - name: tinc-conf.service
-      enable: true
-      command: start
-      content: |
-        [Unit]
-        Description=Tinc Configuration Service
-        After=etcd.service etcd2.service early-docker.service flanneld.service
-        Before=early-docker.target fleet.service
-
-        [Service]
-        Type=oneshot
-        ExecStart=/bin/sh -c "echo \"TINC_HOSTNAME=`hostname | sed -e 's/-/_/g'`\" > /etc/tinc-env"
-    - name: dnsmask.service
-      command: start
-      enable: true
-      content: |
-        [Unit]
-        Description=dnsmask service
-        Requires=docker.service
-        Before=kubernetes-networking.target
-
-        [Install]
-        WantedBy=kubernetes-networking.target
-
-
-        [Service]
-        ExecStartPre=/usr/bin/docker pull quay.io/coreos/dnsmasq
-        ExecStartPre=-/usr/bin/docker rm -f dnsmask
-        ExecStart=/usr/bin/docker run  --name dnsmask --net=host --cap-add=NET_ADMIN quay.io/coreos/dnsmasq -d -q  \
-          --listen-address=127.0.0.1 \
-          --server=/cluster.local/{{ k8s_dns_service_ip }} \
-          --rev-server={{ k8s_service_ip_range }},{{ k8s_dns_service_ip }} \
-          --rev-server=10.1.0.0/16,{{ k8s_dns_service_ip }}
-
-        #ExecStop=/usr/bin/sleep 50
-        ExecStopPost=/usr/bin/docker rm -f dnsmask
-        Restart=always
-        RestartSec=10
-        TimeoutStartSec=5m
-
-
-    - name: tinc.service
-      command: start
-      enable: true
-      content: |
-        [Unit]
-        Description=Tinc VPN Service
-        Requires=flannel-wait.service
-        After=early-docker.service flanneld.service tinc-env.service flannel-wait.service
-        Before=kubernetes-networking.target tinc-config-updater.service
-
-        [Install]
-        WantedBy=kubernetes-networking.target
-
-        [Service]
-        Environment="DOCKER_HOST=unix:///var/run/early-docker.sock"
-        EnvironmentFile=/etc/tinc-env
-
-        EnvironmentFile=/etc/environment
-
-
-        ExecStartPre=/usr/bin/docker pull jenserat/tinc
-        ExecStartPre=/usr/bin/rm -rf /srv/tinc
-        ExecStartPre=/usr/bin/mkdir -p /srv/tinc
-        ExecStartPre=/bin/sh -c "/usr/bin/docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc init $TINC_HOSTNAME"
-        ExecStartPre=/bin/sh -c "/usr/bin/docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Address = $COREOS_PUBLIC_IPV4"
-        TimeoutStartSec=5m
-        EnvironmentFile=/run/flannel/subnet.env
-        ExecStartPre=/bin/sh -c "/usr/bin/docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Subnet = `echo $FLANNEL_SUBNET | sed -e 's/1\\/24/0\\/24/'`"
-        ExecStartPre=/bin/sh -c "/usr/bin/docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add Mode = switch"
-        ExecStartPre=/bin/sh -c "/usr/bin/docker run --rm --volume /srv/tinc:/etc/tinc  jenserat/tinc add DeviceType = tap"
-        ExecStartPre=-/usr/bin/docker rm -f tinc
-        ExecStartPre=/usr/bin/docker run --name tinc  -d --volume /srv/tinc:/etc/tinc --net=host --device=/dev/net/tun --cap-add NET_ADMIN jenserat/tinc start  -D
-
-        ExecStart=/bin/sh -c "while true; do etcdctl set /services/tinc/$TINC_HOSTNAME  \"\\\"` cat /srv/tinc/hosts/$TINC_HOSTNAME `\"\\\" --ttl 60;sleep 45;done"
-
-        ExecStop=/usr/bin/docker rm -f tinc
-        ExecStopPost=/bin/sh -c  "etcdctl rm /services/tinc/$TINC_HOSTNAME"
-
-    - name: tinc-config-updater.service
-      command: start
-      enable: true
-      content: |
-        [Unit]
-        Description=Countinously update tinc configuration after ectd changes
-        After=tinc.service
-        Before=kubernetes-networking.target
-        Restart=always
-
-        [Install]
-        WantedBy=kubernetes-networking.target
-
-        [Service]
-        Restart=always
-        RestartSec=10
-        EnvironmentFile=/etc/environment
-        ExecStartPre=/srv/tinc_initial_config.sh
-        ExecStart=/usr/bin/etcdctl exec-watch --recursive /services/tinc -- /srv/tinc_conf_updater.sh
-
-
-    - name: flanneld.service
-      command: start
-      enable: true
-      drop-ins:
-        - name: 50-network-config.conf
-          content: |
-            [Unit]
-            Requires=etcd2.service
-            After=etcd2.service etcd-waiter.service
-            Before=docker.service
-            [Service]
-            EnvironmentFile=/etc/environment
-            ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16", "Backend": { "Type": "alloc"} }'
-        - name: 40-symlink.conf
-          content: |
-            [Service]
-            ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
-
-
-    - name: docker-bridge.service
-      command: start
-      enable: true
-      content: |
-        [Unit]
-        Description=Configure Docker Bridge
-        Requires=docker.service
-        #After=docker.socket
-        [Service]
-        Type=oneshot
-        #ExecStartPre=-/bin/sh -c "route del -net 10.1.0.0 netmask 255.255.0.0 dev tap0"
-        ExecStartPre=/bin/sh -c "while ! ifconfig -s | grep -q tap0 ; do  sleep 1; done"
-        ExecStartPre=/bin/sh -c "while ! ifconfig -s | grep -q docker0 ; do  sleep 1; done"
-        ExecStartPre=/bin/sh -c "route add -net 10.1.0.0 netmask 255.255.0.0 dev docker0"
-        #ExecStartPre=-/bin/sh -c "brctl delif docker0 tap0"
-        ExecStart=/bin/sh -c "brctl addif docker0 tap0"
-
-    - name: fleet.service
-      command: start
-    - name: clenup-at-shutdown.service
-      enable: true
-      command: start
-      content: |
-        [Unit]
-        Description=Cleanup directories populated by cloudconfig to avoid configuration drift
-        Before=network.target
-        RequiredBy=kube-kubelet.service
-
-        [Install]
-        WantedBy=kubernetes-networking.target
-
-
-        [Service]
-        RemainAfterExit=yes
-        ExecStart=/bin/true
-        ExecStopPost=/opt/bin/cleanup
-        Type=oneshot

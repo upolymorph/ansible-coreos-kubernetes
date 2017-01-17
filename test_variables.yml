@@ -1,0 +1,34 @@
+---
+
+- name: test inventory dicts
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars/nodes.yml
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+
+  tasks:
+  - name: print nodes
+    debug:
+      var: Nodes_info
+
+- name: test inventory dicts from nodes
+  hosts: nodes
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars/nodes.yml
+
+  tasks:
+    - set_fact: current_node={{Nodes_info[inventory_hostname]}}
+
+    - name: print hostname from a inventory
+      debug: msg="hostname for current {{ node_hostname }}. This come from inventory file"
+
+    - name: print hostname from vars dictionary
+      debug: var=Nodes_info['{{ inventory_hostname }}'].hostname
+
+    - name: print hostname from a playbook var
+      debug: msg="current_node var is {{ current_node }}"

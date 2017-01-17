@@ -1,58 +1,42 @@
 ---
-- include: install_etcdca.yml
+#- include: install_etcdca.yml
+#- include: init_cfssl_ca.yml
 
-- name: crate ca home
-  local_action: file path={{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys state=directory
-
-- name: init ca 
-  shell: |
-      cd {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/
-      etcd-ca init --passphrase=""
-  args:
-      creates: "{{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/ca.crt"
-  delegate_to: localhost
-  connection: local
-
-- name: create csr for host
-  shell: |
-      cd {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/
-      etcd-ca  new-cert --passphrase="" -ip {{ inventory_hostname }} {{ coreos_hostname }} 
-  args:
-      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.host.csr"
+- name: create host certificate request
+  template: src=host.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/etcd-{{ coreos_hostname }}-csr.json
   delegate_to: localhost
   connection: local
 
 - name: sign csr for host
   shell: |
-      cd {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/
-      etcd-ca  sign --passphrase="" {{ coreos_hostname }} 
-  args:
-      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.host.crt"
+      cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca/
+      cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=etcd-ca-config.json -profile=client-server def/etcd-{{ coreos_hostname }}-csr.json | cfssljson -bare keys/etcd.{{ coreos_hostname }}.host
+#  args:
+#      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.host.crt"
   delegate_to: localhost
   connection: local
 
-- name: chain certificate
-  shell: |
-      cd {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/
-      etcd-ca  chain {{ coreos_hostname }} > {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.chain
-  args:
-      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.host.chain"
-  delegate_to: localhost
-  connection: local
+#- name: chain certificate
+#  shell: |
+#      cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/
+#      etcd-ca  chain {{ coreos_hostname }} > {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.chain
+#  args:
+#      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.host.chain"
+#  delegate_to: localhost
+#  connection: local
 
-- name: chain certificate
-  shell: |
-      cd {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/
-      etcd-ca  export --insecure --passphrase="" {{ coreos_hostname }} > {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.tar
-      tar  -C {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/ -xf {{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.tar {{ coreos_hostname }}.key.insecure
-  args:
-      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-etcd-ca-keys/.etcd-ca/{{ coreos_hostname }}.key.insecure"
-  delegate_to: localhost
-  connection: local
+#- name: chain certificate
+#  shell: |
+#      cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/
+#      etcd-ca  export --insecure --passphrase="" {{ coreos_hostname }} > {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.tar
+#      tar  -C {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/ -xf {{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.tar {{ coreos_hostname }}.key.insecure
+#  args:
+#      creates:  "{{ inventory_dir }}/{{ kube_cluster_name}}-ca-keys/.etcd-ca/{{ coreos_hostname }}.key.insecure"
+#  delegate_to: localhost
+#  connection: local
 
-- name: set_ca_fcts
+- name: set etcd ca facts
   set_fact:
-      etcd_ca_certificate:  "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-etcd-ca-keys/.etcd-ca/' + coreos_hostname  + '.chain') }}"
-      etcd_cert:    "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-etcd-ca-keys/.etcd-ca/' + coreos_hostname + '.host.crt') }}"
-      etcd_key: "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-etcd-ca-keys/.etcd-ca/' + coreos_hostname + '.key.insecure') }}"
-
+      etcd_ca_certificate:  "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-ca/ca.pem') }}"
+      etcd_cert:    "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-ca/keys/etcd.' + coreos_hostname + '.host.pem') }}"
+      etcd_key: "{{ lookup('file', inventory_dir + '/' + kube_cluster_name +  '-ca/keys/etcd.' + coreos_hostname + '.host-key.pem') }}"

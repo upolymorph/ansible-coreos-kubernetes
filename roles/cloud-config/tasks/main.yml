@@ -25,4 +25,3 @@
   command: rm -rf  /var/lib/etcd2/*
   sudo: yes
   when: clear_etcd_data
-

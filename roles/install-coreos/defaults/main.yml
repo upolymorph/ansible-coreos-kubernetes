@@ -1,3 +1,4 @@
 ---
 coreos_channel: stable
+coreos_board: amd64-usr
 coreos_public_keys: []

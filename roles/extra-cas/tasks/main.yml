@@ -1,5 +1,5 @@
 ---
-- name: read cas 
+- name: read additional certificates from -extra-ca-certs directory
   slurp:
       src: "{{ item }}"
 

@@ -1,0 +1,20 @@
+---
+  - name: create root folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca" state=directory
+  - name: create keys folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca/keys" state=directory
+  - name: create def folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca/def" state=directory
+
+  - name: create CA config file
+    template: src=ca-config.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/etcd-ca-config.json
+
+  - name: create CA certificate request
+    template: src=ca.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/etcd-ca-csr.json
+
+  - name: generate CA cert/key
+    shell: |
+      cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca ; /
+      cfssl gencert -initca def/etcd-ca-csr.json | cfssljson -bare ca
+    args:
+      creates: "{{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem"

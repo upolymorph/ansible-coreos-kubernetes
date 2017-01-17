@@ -1,0 +1,79 @@
+---
+  - name: remove previous CA folder (if exists)
+    shell: rm -r {{ inventory_dir }}/{{ kube_cluster_name}}-ca || true
+  - name: create root folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca" state=directory
+  - name: create keys folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca/keys" state=directory
+  - name: create def folder for cfssl-based PKI
+    file: dest="{{ inventory_dir }}/{{ kube_cluster_name}}-ca/def" state=directory
+
+  - name: create CA config file
+    template: src=ca-config.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/etcd-ca-config.json
+
+  - name: create CA certificate request
+    template: src=ca.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/etcd-ca-csr.json
+
+  - name: generate CA cert/key
+    shell: |
+      cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca ; /
+      cfssl gencert -initca def/etcd-ca-csr.json | cfssljson -bare ca ; /
+      rm ca.csr
+    args:
+      creates: "{{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem"
+
+  - name: Copy CA crt to be trusted locally (!!! Only tested on Ubuntu local host !!!)
+    shell: "cp {{ inventory_dir }}/{{ kube_cluster_name}}-ca/ca.pem /etc/ssl/certs/{{ kube_cluster_name}}-ca.pem"
+    sudo: yes
+
+  - name: Update local trusted CA db (!!! Only tested on Ubuntu local host !!!)
+    shell: update-ca-certificates
+    sudo: yes
+
+  - name: get localhost current public IP
+    shell: dig +short myip.opendns.com @resolver1.opendns.com
+    register: myIP
+
+  - name: debug public IP
+    debug: msg="Our current public Ip is {{ myIP.stdout }}"
+
+  - name: create admin host certificate request
+    template: src=admin.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/KubectlAdmin-csr.json
+    delegate_to: localhost
+    connection: local
+
+  - name: sign csr for admin host
+    shell: |
+        cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca/
+        cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=etcd-ca-config.json -profile=client-server def/KubectlAdmin-csr.json | cfssljson -bare keys/KubectlAdmin.host ; /
+        rm keys/KubectlAdmin.host.csr
+    delegate_to: localhost
+    connection: local
+
+######
+
+  - name: create kubernetes apiserver certificate request
+    template: src=apiserver.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/kubernetes-apiserver-csr.json
+    delegate_to: localhost
+    connection: local
+
+  - name: sign csr for kubernetes apiserver
+    shell: |
+        cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca/
+        cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=etcd-ca-config.json -profile=client-server def/kubernetes-apiserver-csr.json | cfssljson -bare keys/kubernetes-apiserver.host ; /
+        rm keys/kubernetes-apiserver.host.csr
+    delegate_to: localhost
+    connection: local
+
+  - name: create kubernetes worker certificate request
+    template: src=worker.json.tmpl dest={{ inventory_dir }}/{{ kube_cluster_name}}-ca/def/kubernetes-worker-csr.json
+    delegate_to: localhost
+    connection: local
+
+  - name: sign csr for kubernetes worker
+    shell: |
+        cd {{ inventory_dir }}/{{ kube_cluster_name}}-ca/
+        cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=etcd-ca-config.json -profile=client-server def/kubernetes-worker-csr.json | cfssljson -bare keys/kubernetes-worker.host ; /
+        rm keys/kubernetes-worker.host.csr
+    delegate_to: localhost
+    connection: local

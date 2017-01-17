@@ -1,10 +1,38 @@
 ---
-- name: reboot server into rescue image
+- name: check requirements for hosts
   hosts: coreos
   connection: local
   gather_facts: no
   vars:
       ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  tasks:
+    - name: display hostvars
+      debug: var=hostvars
+    - set_fact: current_node={{Nodes_info[coreos_node]}}
+
+
+- name: prepare CAs (for etcd and kubernetes)
+  hosts: localhost
+  connection: local
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  roles:
+    - role: create-CAs
+
+- name: reboot servers into rescue image
+  hosts: coreos
+  connection: local
+  gather_facts: no
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  tasks:
+    - set_fact: current_node={{Nodes_info[coreos_node]}}
   roles:
     - role: boot-rescue
 
@@ -12,31 +40,32 @@
   hosts: coreos
   user: root
   gather_facts: no
-
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  tasks:
+    - set_fact: current_node={{Nodes_info[coreos_node]}}
   roles:
     - role: etcd-certificates
     - role: extra-cas
     - { role: install-coreos,  ansible_python_interpreter: /usr/bin/python }
     - role: kubernetes-certificates
     - role: ceph-on-kubernetes-config
-    - { role: ansible-coreos-bootstrap, ansible_ssh_user: core}
-    - { role: cloud-config, clear_etcd_data: true, ansible_ssh_user: core  }
-    - { role: unsafe_reboot, unsafe_reboot_dealay: 1, ansible_ssh_user: core }
+    - { role: ansible-coreos-bootstrap, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python}
+    - { role: cloud-config, clear_etcd_data: true, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python}
+    - { role: unsafe_reboot, unsafe_reboot_delay: 1, ansible_ssh_user: core}
 
 - name: configure install and configure kubectl and install dns adonn
   hosts: kubernetes
   gather_facts: no
   vars:
       ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
   pre_tasks:
-      - name: wait for kubernetes master to come up
-        delegate_to: localhost
-        connection: local
-        when: inventory_hostname in groups['kubernetes-master']
-        wait_for:
-          host: "{{ inventory_hostname }}"
-          port: 6443
-          timeout: 600
+    - set_fact: current_node={{Nodes_info[coreos_node]}}
+    - debug: var=current_node
   roles:
     - role: kubectl
     - role: kubectl-config

@@ -1,5 +1,8 @@
 ---
-- name: reboot server
+- name: rebooting nodes
+  vars:
+    - ansible_python_interpreter: /home/core/pypy/bin/python
+    - ansible_host: "{{ current_node.ip_address }}"
   shell: sleep 5 && reboot &
   sudo: yes
   args:
@@ -8,8 +11,8 @@
   poll: 0
 
 
-- name: waiting for server to go down
-  local_action: 
+- name: waiting for nodes to go down
+  local_action:
       module: wait_for
       host: "{{ inventory_hostname }}"
       port: 22
@@ -17,13 +20,12 @@
       timeout: 60
       state: stopped
 
-- name: waiting for server to come back
-  local_action: 
-    module: wait_for 
-      host={{ inventory_hostname }} 
-      port=22 
-      delay=1 
+- name: waiting for nodes to come back
+  local_action:
+    module: wait_for
+      host={{ inventory_hostname }}
+      port=22
+      delay=1
       timeout=60
 - name: wait some time to let the server rejoin the etcd cluster
-  pause: seconds={{ unsafe_reboot_dealay|default("300") }}
-
+  pause: seconds={{ unsafe_reboot_delay|default("300") }}

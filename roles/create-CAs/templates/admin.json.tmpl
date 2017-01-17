@@ -1,0 +1,19 @@
+{
+  "CN": "kubectladmin.{{kube_cluster_name}}",
+  "hosts": [
+    "{{ myIP.stdout }}",
+    "127.0.0.1"
+    ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+    "names": [
+       {
+         "C": "MU",
+         "L": "Port-Louis",
+         "O": "Akilion.biz",
+         "OU": "CA Services"
+       }
+    ]
+}

@@ -146,8 +146,23 @@ the playbook should finish without any errors.
 if your installation went well you should be able to get status of your cluster form your machine doing:
 
 ```
-
+	systemctl status
 ```
+
+the following services are essentials for your kubernetes cluster
+
+on all nodes:
+	- etcd (etcd2 in our case)
+	- flannel
+	- fleet
+	- docker
+	- tinc
+	- dnsmask
+
+on kubernetes master nodes:
+	- apiserver
+	- scheduler
+	- controller-manager
 
 #### 1. Check ssh connection ####
 You should be able to connect to each node of your cluster using ssh without password (authentication is done using ssh key). Use the following command to check:
@@ -200,6 +215,35 @@ for this output you can validate that the service is up and running
    CGroup: /system.slice/fleet.service
            └─5974 /usr/bin/fleetd
 ```
+* flannel
+```
+rkt list
+```
+**Expected result:** You should get the following output
+```
+UUID            APP             IMAGE NAME                                      STATE   CREATED         STARTED         NETWORKS
+06ca4311        hyperkube       quay.io/cornelius/hyperkube:v1.5.1_coreos.0     running 16 minutes ago  16 minutes ago
+59993a54        hyperkube       quay.io/cornelius/hyperkube:v1.5.1_coreos.0     running 15 minutes ago  15 minutes ago
+7181ee46        hyperkube       quay.io/cornelius/hyperkube:v1.5.1_coreos.0     running 15 minutes ago  15 minutes ago
+bb06d62d        flannel         quay.io/coreos/flannel:v0.6.2                   exited  17 minutes ago  17 minutes ago
+fcbe0fa1        flannel         quay.io/coreos/flannel:v0.6.2                   running 17 minutes ago  17 minutes ago
+```
+Ensure that there is a running container for app flannel.
+> Note: there is always a app container for flannel exited. (to be reviewed)
+
+* tinc
+```
+	sudo docker --host=unix:///var/run/early-docker.sock ps -a
+```
+**Expected result:** You should get the following output
+```
+CONTAINER ID        IMAGE                              COMMAND                  CREATED             STATUS                      PORTS               NAMES
+34f9729e5a47        jenserat/tinc                      "/usr/sbin/tinc start"   10 minutes ago      Up 10 minutes                                   tinc
+6fb39fd53e4e        quay.io/cornelius/hetner-netconf   "/bin/sh -c /set_rout"   10 minutes ago      Exited (0) 10 minutes ago                       focused_bhabha
+
+```
+Ensure that a container named tinc is up and running in early-docker context.
+Flannel container is no more in this context as it has moved to rkt.
 
 * kube api server
 ```
@@ -216,7 +260,7 @@ for this output you can validate that the service is up and running
    Memory: 54.1M
       CPU: 4.478s
    CGroup: /system.slice/kube-apiserver.service
-           └─28752 /apiserver #--service-account-key-file=/opt/bin/kube-serviceaccount.key --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem --client-ca-file=/etc/kubernetes/ssl/ca.pem --service-account-key-file=/etc/kubernetes/ssl/apiserver-key.pem --service-account-lookup=false --admission-control=NamespaceLifecycle,NamespaceAutoProvision,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota --runtime-config=api/v1 --allow-privileged=true --insecure-bind-address=127.0.0.1 --bind-address=xx.xx.xx.xx --insecure-port=8080 #--etcd-config=/etc/etcd-client.config.json --etcd-cafile=/etc/ssl/etcd/ca.crt --etcd-certfile=/etc/ssl/etcd/key.crt --etcd-keyfile=/etc/ssl/etcd/key.key --etcd-servers=https://xx.xx.xx.xx:2379 --kubelet-https=true --secure-port=6443 --runtime-config=extensions/v1beta1/daemonsets=true --service-cluster-ip-range=10.100.0.0/16 --ssh-keyfile=/etc/kubernetes/ssh/id_rsa --ssh-user=kubernetes #--token-auth-file=/srv/kubernetes/known_tokens.csv #--basic-auth-file=/srv/kubernetes/basic_auth.csv #--etcd-servers=http://127.0.0.1:2379 --logtostderr=true
+           └─28752 /apiserver #--service-account-key-file=/opt/bin/kube-serviceaccount.key --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem --client-ca-file=/etc/kubernetes/ssl/ca.pem --service-account-key-file=/etc/kubernetes/ssl/apiserver-key.pem --service-account-lookup=false --admission-control=NamespaceLifecycle,NamespaceAutoProvision,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota --runtime-config=api/v1 --allow-privileged=true --insecure-bind-address=127.0.0.1 --bind-address=xx.xx.xx.xx --insecure-port=8080 #--etcd-config=/etc/etcd-client.config.json --cafile=/etc/ssl/etcd/ca.crt --etcd-certfile=/etc/ssl/etcd/key.crt --etcd-keyfile=/etc/ssl/etcd/key.key --etcd-servers=https://xx.xx.xx.xx:2379 --kubelet-https=true --secure-port=6443 --runtime-config=extensions/v1beta1/daemonsets=true --service-cluster-ip-range=10.100.0.0/16 --ssh-keyfile=/etc/kubernetes/ssh/id_rsa --ssh-user=kubernetes #--token-auth-file=/srv/kubernetes/known_tokens.csv #--basic-auth-file=/srv/kubernetes/basic_auth.csv #--etcd-servers=http://127.0.0.1:2379 --logtostderr=true
 
 
 ```
@@ -270,6 +314,48 @@ cluster is healthy
 ```
 
 #### 4. Check fleet service ####
+
+
+
+#### 5. Check kubernetes apiserver service
+
+on kubernetes master nodes you should check the api server services.
+
+```
+	systemctl status kube-apiserver.service --no-pager --full
+
+```
+**Expected result:** You should get a list of all the etcd cluster member
+
+```
+systemctl status kube-apiserver.service --no-pager --full
+● kube-apiserver.service - Kubernetes API Server
+   Loaded: loaded (/etc/systemd/system/kube-apiserver.service; static; vendor preset: disabled)
+   Active: active (running) since Sat 2017-01-14 07:32:15 UTC; 4h 12min ago
+     Docs: https://github.com/GoogleCloudPlatform/kubernetes
+ Main PID: 4980 (apiserver)
+    Tasks: 13
+   Memory: 144.1M
+      CPU: 1min 32.357s
+   CGroup: /system.slice/kube-apiserver.service
+           └─4980 /apiserver --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem --client-ca-file=/etc/kubernetes/ssl/ca.pem --service-account-key-file=/etc/kubernetes/ssl/apiserver-key.pem --service-account-lookup=false --admission-control=NamespaceLifecycle,NamespaceAutoProvision,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota --runtime-config=api/v1 --allow-privileged=true --insecure-bind-address=127.0.0.1 --bind-address=88.99.56.196 --insecure-port=8080 --etcd-certfile=/etc/ssl/etcd/key.crt --etcd-keyfile=/etc/ssl/etcd/key.key --etcd-servers=https://88.99.56.196:2379 --kubelet-https=true --secure-port=6443 --runtime-config=extensions/v1beta1/daemonsets=true --service-cluster-ip-range=10.100.0.0/16 --ssh-keyfile=/etc/kubernetes/ssh/id_kube_rsa --ssh-user=kubernetes --logtostderr=true
+
+Jan 14 11:43:50 AkilionKube01 hyperkube-wrapper[4980]: I0114 11:43:50.524620    4980 ssh.go:481] Trying to add tunnel to "88.99.56.213"
+Jan 14 11:43:50 AkilionKube01 hyperkube-wrapper[4980]: I0114 11:43:50.552269    4980 ssh.go:498] Successfully added tunnel for "88.99.56.213"
+Jan 14 11:43:52 AkilionKube01 hyperkube-wrapper[4980]: W0114 11:43:52.812211    4980 controller.go:392] Resetting endpoints for master service "kubernetes" to &TypeMeta{Kind:,APIVersion:,}
+Jan 14 11:44:02 AkilionKube01 hyperkube-wrapper[4980]: W0114 11:44:02.843332    4980 controller.go:392] Resetting endpoints for master service "kubernetes" to &TypeMeta{Kind:,APIVersion:,}
+Jan 14 11:44:10 AkilionKube01 hyperkube-wrapper[4980]: E0114 11:44:10.524371    4980 ssh.go:354] Healthcheck failed for tunnel to "88.99.56.238": Get https://127.0.0.1:10250/healthz: ssh: rejected: connect failed (Connection refused)
+Jan 14 11:44:10 AkilionKube01 hyperkube-wrapper[4980]: I0114 11:44:10.524403    4980 ssh.go:355] Attempting once to re-establish tunnel to "88.99.56.238"
+Jan 14 11:44:10 AkilionKube01 hyperkube-wrapper[4980]: I0114 11:44:10.524418    4980 ssh.go:481] Trying to add tunnel to "88.99.56.238"
+Jan 14 11:44:10 AkilionKube01 hyperkube-wrapper[4980]: I0114 11:44:10.552551    4980 ssh.go:498] Successfully added tunnel for "88.99.56.238"
+Jan 14 11:44:12 AkilionKube01 hyperkube-wrapper[4980]: W0114 11:44:12.871994    4980 controller.go:392] Resetting endpoints for master service "kubernetes" to &TypeMeta{Kind:,APIVersion:,}
+Jan 14 11:44:22 AkilionKube01 hyperkube-wrapper[4980]: W0114 11:44:22.907440    4980 controller.go:392] Resetting endpoints for master service "kubernetes" to &TypeMeta{Kind:,APIVersion:,}
+
+```
+
+```
+curl --key /etc/kubernetes/ssl/worker-key.pem https://127.0.0.1:8888/api/v1/nodes --cert /etc/kubernetes/ssl/worker.pem  --cacert /etc/kubernetes/ssl/ca.pem
+```
 
 ### Troubleshooting common issues
 #### Debugging cloud-config file

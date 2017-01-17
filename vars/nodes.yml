@@ -1,0 +1,16 @@
+Nodes_info:
+  Node1:
+    hostname: 'Kube01'
+    ip_address: '88.99.56.196'
+    netmask: 26
+    gateway: '88.99.56.192'
+  Node2:
+    hostname: 'Kube02'
+    ip_address: '88.99.56.213'
+    netmask: 26
+    gateway: '88.99.56.192'
+  Node3:
+    hostname: 'Kube03'
+    ip_address: '88.99.56.238'
+    netmask: 26
+    gateway: '88.99.56.192'

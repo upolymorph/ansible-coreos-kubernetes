@@ -1,7 +1,7 @@
 ---
 - name: copy cloud config
-  template: 
-    src: cloud_config_install.tmpl 
+  template:
+    src: cloud_config_install.tmpl
     dest: /tmp/cloud-config.yaml
 
 - name: install coreos
@@ -9,12 +9,15 @@
      apt-get -y install gawk
      wget https://raw.githubusercontent.com/coreos/init/master/bin/coreos-install -P /tmp
      chmod a+x /tmp/coreos-install
+     if [ ! -f /usr/share/coreos/release ]; then
+      mkdir -p /usr/share/coreos/; echo "COREOS_RELEASE_BOARD={{ coreos_board}}" > /usr/share/coreos/release
+     fi
      sed -i '/# inform the OS of partition table changes/a \
      sleep 10 \
      sync' /tmp/coreos-install
      /tmp/coreos-install -d /dev/sda -C {{ coreos_channel }} -c /tmp/cloud-config.yaml
 
-- name: clear osd disk 
+- name: clear osd disk
   command: dd if=/dev/zero of={{ ceph_osd_device }} bs=512 count=1 conv=notrunc
   when: ceph_osd_device is defined
 
@@ -34,7 +37,7 @@
 
 
 - name: waiting for server to go down
-  local_action: 
+  local_action:
       module: wait_for
       host: "{{ inventory_hostname }}"
       port: 22
@@ -53,4 +56,3 @@
 - name: remove server from local known_hosts file
   local_action: command  /usr/bin/ssh-keygen -R {{ inventory_hostname }}
   ignore_errors: true
-

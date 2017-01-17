@@ -1,7 +1,8 @@
-*-etcd-ca-keys/
+*-ca-keys/
 *-kubernetes-ca/
 *-ceph/
 *-loadbalancer/
 *.ini
 config/*
 *.retry
+id_rsa*

@@ -1,0 +1,23 @@
+{
+  "CN": "apiserver.kubernetes.{{kube_cluster_name}}",
+  "hosts": [
+    "apiserver.{{ kube_dns_domain }}",
+    "{{ kube_master_dns_name }}",
+    {% for host_ip in groups['kubernetes-master'] %}
+       "{{ host_ip }}",
+    {% endfor %}
+    "127.0.0.1"
+    ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+    "names": [
+       {
+         "C": "MU",
+         "L": "Port-Louis",
+         "O": "Akilion.biz",
+         "OU": "CA Services"
+       }
+    ]
+}

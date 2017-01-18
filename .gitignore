@@ -6,3 +6,4 @@
 config/*
 *.retry
 id_rsa*
+roles/ansible*

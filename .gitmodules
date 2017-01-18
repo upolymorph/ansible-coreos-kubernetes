@@ -1,8 +1,8 @@
 [submodule "library"]
 	path = library
 	url = https://github.com/cornelius-keller/ansible-ovh
-[submodule "roles/ansible-coreos-bootstrap"]
-	path = roles/ansible-coreos-bootstrap
+[submodule "roles/ansible-bootstrap-for-coreos"]
+	path = roles/ansible-bootstrap-for-coreos
 	url = https://github.com/sigma/ansible-coreos-bootstrap.git
 [submodule "images/hyperkube"]
 	path = images/hyperkube

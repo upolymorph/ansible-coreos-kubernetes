@@ -36,7 +36,7 @@
   roles:
     - role: boot-rescue
 
-- name: install coreos
+- name: install coreos on nodes
   hosts: coreos
   user: root
   gather_facts: no
@@ -50,13 +50,55 @@
     - role: etcd-certificates
     - role: extra-cas
     - { role: install-coreos,  ansible_python_interpreter: /usr/bin/python }
+    - { role: ansible-bootstrap-for-coreos, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python}
+
+- name: install kubernetes on cluster
+  hosts: coreos
+  user: root
+  gather_facts: no
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  tasks:
+    - set_fact: current_node={{Nodes_info[coreos_node]}}
+  roles:
     - role: kubernetes-certificates
     - role: ceph-on-kubernetes-config
-    - { role: ansible-coreos-bootstrap, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python}
     - { role: cloud-config, clear_etcd_data: true, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python}
     - { role: unsafe_reboot, unsafe_reboot_delay: 1, ansible_ssh_user: core}
 
-- name: configure install and configure kubectl and install dns adonn
+- name: install and configure kubectl on localhost
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  roles:
+    - role: kubectl
+    - role: kubectl-config
+
+- name: check for kubernetes cluster readiness
+  hosts: coreos
+  user: root
+  gather_facts: no
+  vars:
+      ansible_python_interpreter: /usr/bin/python
+  vars_files:
+    - vars/nodes.yml
+  tasks:
+    - name: wait for kubernetes master to come up
+      delegate_to: localhost
+      connection: local
+      when: inventory_hostname in groups['kubernetes-master']
+      wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 6443
+        timeout: 600
+
+- name: install and configure dns addon, ceph
   hosts: kubernetes
   gather_facts: no
   vars:
@@ -67,8 +109,6 @@
     - set_fact: current_node={{Nodes_info[coreos_node]}}
     - debug: var=current_node
   roles:
-    - role: kubectl
-    - role: kubectl-config
     - role: k8s-kubesystem-namespace
     - { role: k8s-dns-addon   }
     - { role: ceph-on-kubernetes-resources, ansible_ssh_user: core, ansible_python_interpreter: /home/core/pypy/bin/python   }

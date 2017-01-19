@@ -6,6 +6,7 @@
     {% for host_ip in groups['kubernetes-master'] %}
        "{{ host_ip }}",
     {% endfor %}
+    "{{ k8s_service_ip }}",
     "127.0.0.1"
     ],
   "key": {

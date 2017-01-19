@@ -54,7 +54,7 @@ write_files:
     permissions: '0775'
     content: |
       #!/bin/bash
-      /opt/bin/wupiao localhost:8888
+      /opt/bin/wupiao :8888
       /usr/bin/docker run --rm --net=host -v /etc/kubernetes/ssl/:/etc/kubernetes/ssl/ {{ hyperkube_aci }}:{{ hyperkube_aci_tag }} \
       /hyperkube kubectl --client-key=/etc/kubernetes/ssl/worker-key.pem --client-certificate=/etc/kubernetes/ssl/worker.pem \
       --server=https://127.0.0.1:8888 --certificate-authority=/etc/kubernetes/ssl/ca.pem get nodes  | grep {{ inventory_hostname }} | grep  -q SchedulingDisabled
@@ -134,7 +134,7 @@ write_files:
         --mount volume=os-release,target=/etc/os-release \
         --mount volume=run,target=/run \
         --trust-keys-from-https \
-        $RKT_OPTS \
+        $RKT_RUN_ARGS \
         --stage1-from-dir=stage1-fly.aci \
         ${KUBELET_ACI}:${KUBELET_VERSION} --exec=/${EXEC} -- "$@"
 
@@ -358,9 +358,10 @@ write_files:
       apiVersion: v1
       kind: Config
       clusters:
-      - name: local
+      - name: {{ kube_cluster_name }}
         cluster:
           certificate-authority: /etc/kubernetes/ssl/ca.pem
+          server: https://127.0.0.1:8888
       users:
       - name: kubelet
         user:
@@ -368,7 +369,7 @@ write_files:
           client-key: /etc/kubernetes/ssl/worker-key.pem
       contexts:
       - context:
-          cluster: local
+          cluster: {{ kube_cluster_name }}
           user: kubelet
         name: kubelet-context
       current-context: kubelet-context
@@ -418,8 +419,11 @@ write_files:
     owner: root
     content: |
       #! /usr/bin/bash
-      until curl --cacert /etc/ssl/etcd/ca.crt --cert /etc/ssl/etcd/key.crt --key /etc/ssl/etcd/key.key https://{{ inventory_hostname }}:4001/v2/machines -v; do sleep 2; done
 
+      . /etc/environment
+
+      until curl --cacert /etc/ssl/etcd/ca.crt --cert /etc/ssl/etcd/key.crt --key /etc/ssl/etcd/key.key https://{{ inventory_hostname }}:4001/v2/machines -v; do echo "waiting etctd machines ...";sleep 2; done
+      until [ $(etcdctl cluster-health | grep "cluster is healthy" | wc -l) -eq 1 ] ; do echo "waiting etctd cluster healthy ..."; sleep 2; done
 
   - path: /etc/etcd-client.config.json
     permissions: '0644'
@@ -442,9 +446,12 @@ write_files:
     content: |
       #!/bin/bash
       # [w]ait [u]ntil [p]ort [i]s [a]ctually [o]pen
+
+      #could also use /usr/bin/docker run --rm --net=host alpine nc -zv xx.xx.xx.xx 6443
+
       [ -n "$1" ] && \
-        until curl -o /dev/null -sIf http://${1}; do \
-          sleep 1 && echo .;
+        until [ $(netstat -ltn | grep ${1} | grep LISTEN | wc -l) -gt 0 ]; do \
+          sleep 1 && echo "waiting for port $1 ...";
         done;
       exit $?
   - path: /srv/tinc_initial_config.sh
@@ -871,6 +878,7 @@ coreos:
         Before=setup-network-environment.service
 
         [Service]
+        EnvironmentFile=/etc/environment
         ExecStartPre=/usr/bin/chmod +x /opt/bin/waiter.sh
         ExecStart=/usr/bin/bash /opt/bin/waiter.sh
         RemainAfterExit=true
@@ -881,7 +889,7 @@ coreos:
       content: |
           [Unit]
           Description=Turn on automated addition of blackhole routes for sshd attackers
-          After=etcd2.service
+          After=etcd2.service etcd-waiter.service
           Requires=etcd2.service
 
           [Service]
@@ -1009,7 +1017,6 @@ coreos:
         Description=Countinously update tinc configuration after ectd changes
         After=tinc.service
         Before=kubernetes-networking.target
-        Restart=always
 
         [Install]
         WantedBy=kubernetes-networking.target
@@ -1043,7 +1050,7 @@ coreos:
       content: |
         [Unit]
         Description=Cleanup directories populated by cloudconfig to avoid configuration drift
-        RequiredBy=kube-kubelet.service
+        Before=kube-kubelet.service
 
         [Install]
         WantedBy=kubernetes-networking.target
@@ -1110,6 +1117,7 @@ coreos:
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
         Environment=EXEC=controller-manager
+        ExecStartPre=/opt/bin/wupiao :6443
         ExecStart=/opt/bin/hyperkube-wrapper \
         --service-account-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem \
         --root-ca-file=/etc/kubernetes/ssl/ca.pem \
@@ -1135,6 +1143,7 @@ coreos:
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
         Environment=EXEC=scheduler
+        ExecStartPre=/opt/bin/wupiao :6443
         ExecStart=/opt/bin/hyperkube-wrapper \
         --master=127.0.0.1:8080 \
         --leader-elect=true \
@@ -1172,6 +1181,31 @@ coreos:
         [Unit]
         Description=services required for proper container networking
 
+    - name: kube-apiserver-haproxy.service
+      command: start
+      content: |
+         [Unit]
+         Description=Ha Proxy for kubernetes api server
+         After=docker.service
+         Before=kubernetes-networking.target
+
+         [Service]
+         TimeoutStartSec=5m
+         ExecStartPre=-/usr/bin/docker kill haproxy
+         ExecStartPre=-/usr/bin/docker rm -f haproxy
+         ExecStartPre=/usr/bin/docker pull haproxy:alpine
+         ExecStart=/usr/bin/docker run --rm \
+           --name haproxy \
+           -v /etc/kube_apiserver_haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
+           -p 127.0.0.1:8888:8080 \
+           haproxy:alpine
+         ExecStop=-/usr/bin/docker stop haproxy
+         ExecStop=-/usr/bin/docker rm haproxy
+         Restart=always
+         RestartSec=10
+
+         [Install]
+         WantedBy=kubernetes-networking.target
     - name: kube-proxy.service
       command: start
       content: |
@@ -1190,7 +1224,7 @@ coreos:
         Environment=KUBELET_VERSION={{ hyperkube_aci_tag }}
         Environment=KUBELET_ACI={{ hyperkube_aci }}
         ExecStartPre=/usr/bin/docker pull {{ hyperkube_aci }}:{{ hyperkube_aci_tag }}
-        ExecStartPre=-/usr/bin/docker rm -f kube-proxy
+        ExecStartPre=-if [ $(/usr/bin/docker ps -a | /usr/bin/grep kube-proxy | /usr/bin/wc -l) -gt 0 ]; then echo "deleting existing kube-proxy container"; /usr/bin/docker rm -f kube-proxy; fi
         ExecStart=/usr/bin/docker run \
                    -v  /etc/kubernetes/:/etc/kubernetes/ \
                    --name=kube-proxy \
@@ -1219,16 +1253,16 @@ coreos:
 
         Environment=KUBELET_IMAGE_TAG={{ hyperkube_aci_tag }}
         Environment=KUBELET_IMAGE_URL={{ hyperkube_aci }}
-        Environment="RKT_OPTS=--volume=ceph,kind=host,source=/etc/ceph/ --mount volume=ceph,target=/etc/ceph/ --volume=modules,kind=host,source=/lib/modules/ --mount volume=modules,target=/lib/modules/ --volume resolv-conf,kind=host,source=/etc/resolv.conf --mount volume=resolv-conf,target=/etc/resolv.conf --volume var-log-containers,kind=host,source=/var/log/containers/ --mount volume=var-log-containers,target=/var/log/containers/"
+        Environment="RKT_RUN_ARGS=--volume=ceph,kind=host,source=/etc/ceph/ --mount volume=ceph,target=/etc/ceph/ --volume=modules,kind=host,source=/lib/modules/ --mount volume=modules,target=/lib/modules/ --volume resolv-conf,kind=host,source=/etc/resolv.conf --mount volume=resolv-conf,target=/etc/resolv.conf --volume var-log-containers,kind=host,source=/var/log/containers/ --mount volume=var-log-containers,target=/var/log/containers/"
         #--volume sys,kind=host,source=/sys --mount volume=sys,target=/sys --volume dev,kind=host,source=/dev --mount volume=dev,target=/dev"
         ExecStart=/usr/lib/coreos/kubelet-wrapper \
-          --api-servers=https://127.0.0.1:8888 \
           --allow-privileged=true \
           --config=/etc/kubernetes/manifests \
           --cluster-dns={{ k8s_dns_service_ip }} \
           --cluster-domain={{ k8s_dns_domain }} \
           --hostname-override={{ inventory_hostname }} \
           --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
+          --require-kubeconfig \
           --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
           --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \
           --register-node=true \
@@ -1249,29 +1283,4 @@ coreos:
 
         [Install]
         WantedBy=multi-user.target
-    - name: kube-apiserver-haproxy.service
-      command: start
-      content: |
-         [Unit]
-         Description=Ha Proxy for kubernetes api server
-         After=docker.service
-         Before=kubernetes-networking.target
-
-         [Service]
-         TimeoutStartSec=5m
-         ExecStartPre=-/usr/bin/docker kill haproxy
-         ExecStartPre=-/usr/bin/docker rm -f haproxy
-         ExecStartPre=/usr/bin/docker pull haproxy:alpine
-         ExecStart=/usr/bin/docker run --rm \
-           --name haproxy \
-           -v /etc/kube_apiserver_haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
-           -p 127.0.0.1:8888:8080 \
-           haproxy:alpine
-         ExecStop=-/usr/bin/docker stop haproxy
-         ExecStop=-/usr/bin/docker rm haproxy
-         Restart=always
-         RestartSec=10
-
-         [Install]
-         WantedBy=kubernetes-networking.target
 {% endif %}

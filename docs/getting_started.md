@@ -145,9 +145,70 @@ the playbook should finish without any errors.
 
 if your installation went well you should be able to get status of your cluster form your machine doing:
 
+1. Check wether kubernetes components are running:
+
 ```
-	systemctl status
+	kubectl get cs
 ```
+**Expected result:** You should get the following output
+```
+NAME					STATUS		MESSAGE         ERROR
+controller-manager		Healthy		ok
+scheduler            	Healthy  	ok
+etcd-0               	Unhealthy   Get https://xx.xx.xx.xx:2379/health: remote error: tls: bad certificate
+```
+
+> Note: it seems that kubectl is currently not handling correctly TLS on etcd servers, reason why we get this error for etcd-0.
+
+2. Check the master status
+
+```
+	kubectl cluster-info
+```
+**Expected result:** You should get the following output
+```
+Kubernetes master is running at https://{{ kube dns name }}:6443
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+```
+
+3. Check if all nodes are ready
+
+```
+	kubectl get nodes
+```
+**Expected result:** You should get the following output
+```
+NAME           STATUS    AGE
+xx.xx.xx.xx    Ready     2m
+xx.xx.xx.xx    Ready     2m
+xx.xx.xx.xx    Ready     3m
+```
+
+4. Check status of all pods:
+
+```
+kubectl get pods --all-namespaces
+```
+**Expected result:** You should get the following output
+```
+NAMESPACE     NAME                                    READY     STATUS             RESTARTS   AGE
+ceph          ceph-mds-3917509210-lfrrk               0/1       CrashLoopBackOff   5          9m
+ceph          ceph-mon-52lfp                          0/1       CrashLoopBackOff   6          9m
+ceph          ceph-mon-check-pv2vx                    1/1       Running            0          9m
+ceph          ceph-mon-fzq5v                          0/1       CrashLoopBackOff   6          9m
+ceph          ceph-mon-t81vq                          0/1       CrashLoopBackOff   5          9m
+ceph          ceph-osd-6zkh1                          0/1       CrashLoopBackOff   5          9m
+ceph          ceph-osd-jpqx3                          0/1       CrashLoopBackOff   6          9m
+ceph          ceph-osd-tqd5c                          0/1       CrashLoopBackOff   6          9m
+kube-system   kube-dns-v11-454lb                      3/4       Running            6          10m
+kube-system   kube-dns-v11-54887                      3/4       Running            6          10m
+kube-system   kube-dns-v11-drdvf                      3/4       Running            6          10m
+kube-system   kubernetes-dashboard-3203831700-4znlr   0/1       CrashLoopBackOff   6          7m
+```
+
+### Troubleshooting your cluster ###
+
 
 the following services are essentials for your kubernetes cluster
 
@@ -163,6 +224,14 @@ on kubernetes master nodes:
 	- apiserver
 	- scheduler
 	- controller-manager
+
+on kubernetes worker nodes:
+	- proxy
+	- kubelet
+
+finally to support high availability this playbook deploy on every node:
+	- a ha-proxy docker machines.
+> Note: currently those machines provide a HA access to apiserver on masternode by accessing port 8888 locally on each cluster nodes.
 
 #### 1. Check ssh connection ####
 You should be able to connect to each node of your cluster using ssh without password (authentication is done using ssh key). Use the following command to check:

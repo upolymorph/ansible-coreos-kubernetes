@@ -1,5 +1,5 @@
 ---
-- name: copy cloud config
+- name: copy cloud config for coreos-install only
   template:
     src: cloud_config_install.tmpl
     dest: /tmp/cloud-config.yaml

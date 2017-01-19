@@ -1,5 +1,5 @@
 ---
-- name: check if dns-addon is already installed
+- name: get namespace for our cluster
   command: kubectl get namespaces --output=json --context={{ kube_cluster_name }}
   register: system_namespace_kubectl_command
   changed_when: false
@@ -14,7 +14,7 @@
   connection: local
   run_once: true
 
-- name: set kubctlexists to default to false
+- name: set kubctl exists to default to false
   set_fact:
       k8s_system_namespace: false
   changed_when: false
